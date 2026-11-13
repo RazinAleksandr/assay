@@ -1,0 +1,13 @@
+{
+  "name": "assay",
+  "owner": {"name": "Assay"},
+  "metadata": {"description": "Assay, the quality gate for the running app: connect a repository in one prompt."},
+  "plugins": [
+    {
+      "name": "assay",
+      "source": "./",
+      "description": "Connect a repository to the Assay quality gate in one prompt: Claude reads the app, writes its user journeys, proves them on the running app, adds the CI workflow and opens the pull request.",
+      "category": "testing"
+    }
+  ]
+}

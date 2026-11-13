@@ -1,0 +1,29 @@
+# The Assay scanner for GitLab: include it from an app's .gitlab-ci.yml.
+#   include:
+#     - remote: https://raw.githubusercontent.com/RazinAleksandr/assay/v0/ci/assay.gitlab-ci.yml
+#   variables:
+#     ASSAY_HOST_URL: https://assay.example.com      # ASSAY_TOKEN: masked CI/CD variable
+# Merge requests are compared with their target branch; the default branch with its previous analysis.
+# Set ASSAY_GITLAB_TOKEN (api scope) to get the result as a merge request note.
+.assay:
+  stage: test
+  image: ${ASSAY_IMAGE}
+  variables:
+    ASSAY_IMAGE: registry.example.com/qa/assay:0.2      # built from this repo's Dockerfile: browsers + Node 22
+    ASSAY_PROJECT: .assay
+  before_script:
+    - npm ci
+  script:
+    - assay ci "$ASSAY_PROJECT" $ASSAY_ARGS
+  artifacts:
+    when: always
+    expose_as: Assay report
+    paths: [.assay/runs/]
+    reports: {junit: .assay/runs/*/junit.xml}
+  resource_group: assay-$CI_PROJECT_PATH_SLUG              # one analysis per stand at a time
+
+assay:
+  extends: .assay
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

@@ -1,0 +1,66 @@
+# The Assay scanner as a GitHub Action: `uses: RazinAleksandr/assay@v0` in an app's workflow.
+# The public repo RazinAleksandr/assay ships this file with the built scanner in dist/; here (`uses: ./`) it builds from source.
+# Same role as SonarCloud's scan action: run the analysis, upload it, gate the pipeline, link to the server.
+# The job signs in with GitHub's OIDC token: give it `permissions: id-token: write` and nothing else to configure.
+name: Assay quality gate
+description: Run the app's Assay journeys and screen scan, compare with the target branch, upload to the Assay server, gate the job and comment on the pull request.
+branding: {icon: check-circle, color: blue}
+inputs:
+  host-url:
+    description: "Assay server URL. Default: the hosted service. An empty value keeps the analysis in the job artifacts"
+    default: http://46.225.104.43:8080
+  token:
+    description: "Admin token of a self-hosted server. Not needed on GitHub Actions with `id-token: write`"
+    required: false
+  command:
+    description: "ci (default): the quality gate on every push and pull request. bench: the benchmark for AI features (repeats journeys, compares arms)"
+    default: ci
+  project:
+    description: Folder with assay.yaml
+    default: .assay
+  browsers:
+    description: Playwright browsers to install
+    default: chromium webkit
+  args:
+    description: "Extra arguments, e.g. \"-k tag:smoke\" for ci, or \"--attempts 3 --arm sonnet=env:MODEL=sonnet --arm haiku=env:MODEL=haiku\" for bench"
+    default: ""
+  anthropic-api-key:
+    description: Enables AI-judge checks; without it they are undecided, never guessed
+    required: false
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v6
+    - name: Install the Assay scanner and browsers
+      id: install
+      shell: bash
+      env:
+        INPUT_BROWSERS: ${{ inputs.browsers }}
+      run: |
+        from="$GITHUB_ACTION_PATH"
+        whl=$(ls "$GITHUB_ACTION_PATH"/dist/assay-*-py3-none-any.whl 2>/dev/null | tail -n 1)
+        [ -n "$whl" ] && from="$whl"
+        echo "from=$from" >> "$GITHUB_OUTPUT"
+        uvx --from "$from" assay --version
+        uvx --from "$from" assay browsers --with-deps $INPUT_BROWSERS
+    - name: Assay analysis
+      shell: bash
+      env:
+        ASSAY_HOST_URL: ${{ inputs.host-url }}
+        ASSAY_TOKEN: ${{ inputs.token }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        GITHUB_TOKEN: ${{ github.token }}
+        INPUT_PROJECT: ${{ inputs.project }}
+        INPUT_ARGS: ${{ inputs.args }}
+        INPUT_COMMAND: ${{ inputs.command }}
+        ASSAY_FROM: ${{ steps.install.outputs.from }}
+      run: |
+        case "$INPUT_COMMAND" in ci|bench) ;; *) echo "command must be ci or bench"; exit 3;; esac
+        uvx --from "$ASSAY_FROM" assay "$INPUT_COMMAND" "$INPUT_PROJECT" $INPUT_ARGS
+    - name: Keep the evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: assay-${{ inputs.command }}-evidence
+        path: ${{ inputs.project }}/runs
+        if-no-files-found: ignore

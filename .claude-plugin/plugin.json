@@ -1,0 +1,8 @@
+{
+  "name": "assay",
+  "description": "The quality gate for the running app. /assay:connect wires a repository to Assay CI; the assay skill grows journeys, explains failed gates and runs benchmarks of AI features.",
+  "author": {"name": "Assay"},
+  "homepage": "https://github.com/RazinAleksandr/assay",
+  "repository": "https://github.com/RazinAleksandr/assay",
+  "keywords": ["testing", "e2e", "quality-gate", "ci", "playwright", "ai-evals"]
+}
