@@ -87,9 +87,11 @@ step, its screenshot. Iterate until it passes, or until you are sure the product
 
 - Wrong target, timing or start state: fix the journey.
 - The app really misbehaves (not saved, the wrong item deleted, an error): keep the journey with the precise check,
-  tag it `known-bug` and tell the user with the evidence. Never weaken a check to get green.
+  tag it `known-bug` (an expected failure: listed on every analysis, never blocks) and tell the user with the
+  evidence. Never weaken a check to get green.
 
-Then run everything twice with `assay run .assay` (it also scans the screens). Verdicts must match between the runs;
+Then run everything twice with `assay run .assay --scan` (as CI does: journeys plus the screen scan). Verdicts must
+match between the runs;
 fix flaky journeys (waits, `clock`, isolated data). Mention the top issues the scan found.
 
 ## 4. CI (5 min)

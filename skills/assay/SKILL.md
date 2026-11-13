@@ -27,7 +27,8 @@ machine: `assay browsers`.
 ## A bug report → a regression journey
 
 Encode the correct behaviour precisely, confirm it FAILS on the current build and name the check that proves it.
-Tag it `known-bug` with `severity` by user impact. It turns green when the fix lands.
+Tag it `known-bug` with `severity` by user impact: an expected failure, listed on every analysis, never blocks.
+When the fix lands it passes and the pull request comment says so; then remove the tag so it guards against a comeback.
 
 ## Explain a gate
 

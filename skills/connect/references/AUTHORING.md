@@ -56,6 +56,25 @@ gate:
   max_inconclusive: 0.2
 ```
 
+### How a run goes (what is shared between journeys)
+
+1. **Start.** If something already answers at `app.ready`, Assay uses it as is: no reset, no start. That is why the
+   profile starts the app on a dedicated port, never on the one a developer's own server uses. Otherwise
+   `app.reset` runs once, then `app.start`, then Assay waits for `app.ready`. The app is stopped at the end.
+2. **Scan** (with `--scan`, and in CI): every route in `scan.routes` on every scan viewport.
+3. **Journeys** run one after another in the order of the files (sorted by name) and of the cases inside them,
+   **against the same running app and the same data**. Each journey gets a fresh browser context (no cookies,
+   no storage). `as: <account>` logs in at the start of the journey; the session is reused by later journeys of the
+   same account and viewport (`auth: {cache: false}` turns that off).
+4. **Grading** reads only the recorded evidence, so `assay grade` re-grades without the app.
+
+So a journey must not rely on another journey's changes, and must leave nothing that breaks the next one:
+check changes with `delta` (not absolute counts), prove the seed with `expect_before`, and when a journey deletes or
+edits, let it work on a record it creates in `setup:` (or on one no other journey uses).
+`auth.http` sends its request from the browser context, so the session cookie lands in the browser; `auth.steps`
+logs in through the UI instead; `auth.check` (`GET /api/me`) proves it worked, otherwise the journey is INCONCLUSIVE.
+`assay bench` starts the app from `app.reset` for every attempt.
+
 ## 2. Case
 
 ```yaml
@@ -150,7 +169,9 @@ Any step accepts `timeout: <ms>`.
 3. **Prove the start state** with `expect_before`; never let a broken fixture look like a product bug.
 4. **Check the result, not the path.** `state`/`visible` beat "clicked the right button".
 5. **`must` = the release minimum**, `should` = desirable. A judge item in `must` costs 3 calls.
-6. **A known bug** → a case that FAILs today with a precise `must` and `severity`; it turns green when fixed.
+6. **A known bug** → a case that FAILs today with a precise `must`, its `severity` and the tag `known-bug`. It is an
+   expected failure: listed on every analysis, never blocks the gate. When the fix lands it passes (the pull request
+   comment says so); then drop the tag, and it guards against the bug coming back.
 7. **Games / canvas:** state hooks (`js` probes, `invariant`) and seeded saves (`storage`) beat pixels; freeze time with `clock`.
 
 ## 4. Verdicts and owners
