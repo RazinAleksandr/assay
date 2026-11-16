@@ -19,29 +19,29 @@ machine: `assay browsers`.
 1. Find what the user does and what proves it worked: the saved row, the API state, the visible result.
 2. Write it in `.assay/cases/<area>.yaml`: steps with targets a person perceives (role, label, text); a `state`
    check plus `allowed_changes` for anything that changes data; `expect_before` when it starts from seeded data.
-3. Unknown UI path: write a `goal:` journey first and run it with `--agent`; the agent explores and caches the path
+3. Give it a `promise:` (what users are promised, in their words) and `critical: true` if it must never break.
+4. Unknown UI path: write a `goal:` journey first and run it with `--agent`; the agent explores and caches the path
    in `.assay-cache/` (commit it). Then rewrite it as `steps:` if it should be fast and deterministic.
-4. Prove it: `assay run .assay -k <id> --no-scan`, read `.assay/runs/<newest>/report.md`. Run it 3 times; a check
-   in `must` has to hold in every run.
+5. Prove it: `assay run .assay -k <id> --no-scan`, then `assay brief`. Run it 3 times; a check in `must` has to hold
+   in every run.
 
 ## A bug report → a regression journey
 
 Encode the correct behaviour precisely, confirm it FAILS on the current build and name the check that proves it.
-Tag it `known-bug` with `severity` by user impact: an expected failure, listed on every analysis, never blocks.
+Tag it `known-bug` with `severity` by user impact: an expected failure, listed on every analysis, never blocks while it
+fails the same way. If it starts failing differently, or a journey that passed gets the tag, the gate counts it.
 When the fix lands it passes and the pull request comment says so; then remove the tag so it guards against a comeback.
 
-## Explain a gate
+## A failed gate
 
-1. Start from the pull request's Assay comment: the condition that failed and the newly failing journeys.
-   The link opens the analysis: each journey's steps with screenshots, checks, and what changed in the data.
-2. Locally: `assay run .assay -k <id>` reproduces it; `.assay/runs/<id>/report.md` has the same evidence.
-3. Who owns it:
-   - FAIL with a missing button or text: look at the screenshot. Renamed UI is a stale journey; update it.
-   - FAIL on `state` or `allowed_changes`: the product saved the wrong thing. That is the bug the gate caught.
-   - INCONCLUSIVE is never the product's fault: the app did not start, login or setup failed, the start state was
-     wrong, or the judge had no key. Fix the environment or the journey.
-4. A new issue from the sensors (console error, failed request, accessibility, layout) names its screen and
-   evidence. Fix it or, only if it is verified noise, add it to `ignore` in `assay.yaml`.
+The pull request comment says the verdict in four lines and links the brief. To fix it, use the `fix` skill
+(`/assay:fix <brief URL>`): it reads the brief (`assay brief <url>`), follows the suspect code, reproduces and re-runs.
+To explain it to a person:
+- ❌ Don't ship: a journey broke because of the product (the headline says what users would hit), or the change
+  weakened checks (a person must approve with the label `assay-approved`).
+- ⚠️ Not sure: something could not be checked (the app did not start, login or setup failed, no judge key). Never the
+  product's fault: fix the environment or the journey (`assay doctor .assay`).
+- Renamed UI is a stale journey: update it to the new behaviour with checks as strict as before.
 
 ## Benchmark AI features
 

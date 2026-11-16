@@ -16,8 +16,9 @@ A project is the `.assay/` folder in the app's repository: `assay.yaml` (the app
 ```
 
 In CI: `assay ci` (see the product README). Locally, from the app repo:
-`assay run .assay [--scan] [-k 'glob*' | -k tag:x] [--baseline .assay/runs/<id>]` ·
-re-grade without re-running: `assay grade .assay .assay/runs/<id>` · preflight: `assay doctor .assay`.
+`assay run .assay [--scan] [-k 'glob*' | -k tag:x | -k group:feed | -k is:critical] [--baseline .assay/runs/<id>]` ·
+re-grade without re-running: `assay grade .assay .assay/runs/<id>` · preflight: `assay doctor .assay` ·
+what to fix, as JSON for a coding agent: `assay brief [.assay/runs/<id> | <analysis URL>]`.
 
 ## 1. Profile (`assay.yaml`)
 
@@ -37,7 +38,10 @@ auth:                                            # how `as: <account>` logs in (
 http_headers: {Origin: "{origin}", X-CSRF-Token: "{vars.csrf}"}   # added to every `http` step
 probes:                                          # the app's state as JSON — read before and after each case
   posts: {sqlite: "{env.DATA_DIR}/app.sqlite", sql: "select id, caption from posts order by id"}
-  me:    {http: "GET /api/auth/session", select: user}
+  me:    {http: "GET /api/auth/session", select: user, when_as: "*"}   # read only in signed-in journeys
+                                                 # (when_as: mila | [mila, noah] | "*"); out of scope = not part of
+                                                 # that journey's state. A probe in scope that fails makes `state`,
+                                                 # `changed` and `allowed_changes` undecided: no data, no pass
   docs:  {js: "JSON.parse(localStorage.getItem('docs') || '[]')"}   # runs in the page
   saves: {files: "{env.DATA_DIR}/media"}
   build: {cmd: "xcrun simctl listapps booted | plutil -convert json -o - -"}
@@ -52,9 +56,54 @@ judge: {backend: claude-cli, model: sonnet, must_votes: 3, should_votes: 1}   # 
 gate:
   fail_on_case_fail: true
   max_new: {blocker: 0, critical: 0}
-  min_rating: {reliability: B}
+  min_rating: {reliability: B}        # a dimension nothing measured has no rating: the gate is then INCONCLUSIVE
   max_inconclusive: 0.2
+  min_cases: 1                        # fewer journeys executed → INCONCLUSIVE, never PASSED
+  block_on_weakened: true             # a pull request that weakens checks waits for the label `assay-approved`
+select:                               # pull requests only; the default branch always runs every journey
+  mode: auto                          # auto (default) | all
+  sample: 0.1                         # safety sample of the journeys the change does not touch
+  budget_min: 10                      # hard cap on the estimated minutes (optional; see below what goes first)
+  global: ["src/theme/*"]             # more files that affect every journey (lock files, build config, auth,
+                                      # middleware, global styles and assay.yaml already do)
+groups:                               # optional: who owns code no journey is mapped to (globs, like `global`)
+  feed: {paths: ["server/feed.ts", "web/src/Feed*"]}
 ```
+
+### Which journeys a pull request runs
+
+On a pull request Assay runs the journeys its change can break, not all of them: the `critical: true` ones, the
+journeys the change adds or edits, those that failed on the target branch, and those linked to the changed files by
+the **journey map** of the target branch's last full analysis: frontend files that ran in a journey (Chromium
+coverage, mapped through source maps), API routes whose handlers the change touches, tables whose data a journey
+changed, texts its steps aim at. A changed source file none of that links to a journey goes to the journeys of the
+**group** whose `paths` match it, else to the journeys that reach it through code that **imports** it, two levels up
+(JS/TS relative imports, `require`, `import()`; Python imports): those that ran an importer, and those that call a
+route an importer declares — "uses `server/serialize.ts` through `server/posts.ts` (`GET /posts/:id`)". Only when that
+finds nothing too, or the change touches something everything depends on, does every journey run. A rotating 10 %
+sample of the rest catches gaps in the map. The comment says "Checked 12 of 140 journeys (touched by this change)" and
+the brief says why each one ran.
+
+A journey's **group** is its `group:` field, else its file inside `cases/` without the extension (`cases/feed.yaml` →
+`feed`, `cases/social/feed.yaml` → `social/feed`); `-k group:feed` runs one group locally.
+
+`select.budget_min` is a hard cap on the estimated time (the target branch's durations; 5 s for a journey it has not
+run), also when every journey would run. Over it, Assay drops the safety sample first, then the rest of "every journey"
+(a different shuffle on every pull request), journeys not mapped yet, those linked by group or import, and last those
+the change touches directly. `critical: true`, new or edited and failing journeys always run, and the comment says
+what was dropped: "Checked 40 of 120 journeys (…, 80 over the 10-min budget)".
+
+### What a pull request is told
+
+The comment answers "ship it or not, and why" in four lines: ✅ Ship it / ❌ Don't ship / ⚠️ Not sure (nothing could
+be decided: never the product's fault), one sentence built from the failed check's data ("`comments.body` was saved
+cut short in the database: 20 of 90 characters"), what the person must do (nothing, decide, look), and how much was
+checked. Its brief link gives a coding agent the failures, expected against saved values, the **suspect code** of the
+change (hunks ranked by the data: writes the wrong field, sits in the handler of a route the journey called, touches
+the table…) and how to reproduce: `assay brief <url>`, or the `assay` MCP server and `/assay:fix` in Claude Code.
+A change that weakens the gate (removes a journey or a `must` check, moves one to `should`, adds a `known-bug` tag,
+allows more errors or data changes, relaxes a limit, adds `ignore`/`volatile` entries, loosens `gate`) is listed and
+blocks until someone adds the label `assay-approved` to the pull request and re-runs the job.
 
 ### How a run goes (what is shared between journeys)
 
@@ -80,8 +129,12 @@ logs in through the UI instead; `auth.check` (`GET /api/me`) proves it worked, o
 ```yaml
 - id: post.create_image               # unique; selectable with -k 'post.*'
   title: Mila publishes a photo with a caption
+  promise: A new post appears with its photo and caption   # what users are promised; people read it instead of the id
+  critical: true                       # runs on every pull request, whatever the selection (optional)
+  ai: false                            # true: an AI feature; `assay bench` repeats these by default (optional)
   severity: critical                   # issue severity if it FAILs: blocker|critical|major|minor
   tags: [posts, smoke]
+  group: posts                         # default: the file's name inside cases/ (optional; -k group:posts)
   as: mila                             # log in first (optional)
   viewport: mobile                     # desktop (default) | mobile | any profile viewport
   setup:                               # prepare the start state (API/UI/storage). Failure → INCONCLUSIVE
@@ -170,8 +223,10 @@ Any step accepts `timeout: <ms>`.
 4. **Check the result, not the path.** `state`/`visible` beat "clicked the right button".
 5. **`must` = the release minimum**, `should` = desirable. A judge item in `must` costs 3 calls.
 6. **A known bug** → a case that FAILs today with a precise `must`, its `severity` and the tag `known-bug`. It is an
-   expected failure: listed on every analysis, never blocks the gate. When the fix lands it passes (the pull request
-   comment says so); then drop the tag, and it guards against the bug coming back.
+   expected failure: listed on every analysis, never blocks the gate while it fails the same way (same cause, step
+   and failed checks as on the target branch; a journey new to the suite is expected to fail). If it starts failing
+   differently, or a journey that passed gets the tag, that is a regression. When the fix lands it passes (the pull
+   request comment says so); then drop the tag, and it guards against the bug coming back.
 7. **Games / canvas:** state hooks (`js` probes, `invariant`) and seeded saves (`storage`) beat pixels; freeze time with `clock`.
 
 ## 4. Verdicts and owners
@@ -185,7 +240,10 @@ Issues come from failed cases **and** from always-on sensors on every journey an
 reliability (exceptions, console errors, 5xx/4xx, failed requests), performance (LCP, CLS, INP, long tasks,
 slow APIs, heavy pages), accessibility (axe-core WCAG 2.2 AA), UX & mobile (overflow, small touch targets,
 broken images, blank screens), security-lite (session cookies without HttpOnly, tokens in localStorage).
-Ratings A–E per dimension use SonarQube's rule: A none · B minor · C major · D critical · E blocker.
+The accessibility audit keeps every failing element and what axe could not decide (`incomplete`: a person must look).
+`analysis.json` records what measured each dimension (`measured`); a dimension nothing measured has no rating (not
+an A) and the product's page lists it under "Not checked". Ratings A–E stay in `analysis.json` for `min_rating`;
+people see the verdict and the problems in words instead.
 
 ## 5. Benchmark (products with AI)
 

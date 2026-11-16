@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "assay": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/assay",
+      "args": ["mcp"]
+    }
+  }
+}

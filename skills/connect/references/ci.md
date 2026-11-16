@@ -96,6 +96,13 @@ Keep `.assay/` next to the app and point the step at it:
         with: {project: apps/web/.assay}
 ```
 
+### What the step does on a pull request
+
+It reads the change (`git diff` against the target's commit; it fetches that commit itself, `fetch-depth` can stay 1),
+runs the journeys the change can break (see "Which journeys a pull request runs" in AUTHORING.md), finds the suspect
+code of every failure and comments with the verdict and a brief link. A change that weakens checks waits for a person:
+they add the label `assay-approved` to the pull request and re-run the Assay job (the step reads the current labels).
+
 ### Action inputs
 
 | input | default | |

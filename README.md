@@ -39,10 +39,27 @@ From then on, ask Claude in plain words: *"add a journey for checkout"*, *"why d
 
 ## What a pull request gets
 
-- **A verdict:** PASSED or FAILED, compared with the last analysis of `main`. Only problems the change introduces block it.
-- **What broke, in words:** the journey, the step, the screenshot, and the difference in the data.
-- **A link to the analysis:** every journey step by step, every screen scanned for errors, speed, accessibility and layout.
-- **An owner for every result:** FAIL is the product's fault. A broken environment is INCONCLUSIVE and never blocks a merge.
+```
+❌ Don't ship: 1 journey broke
+Mila comments on a post: `comments.body` was saved cut short in the database: 20 of 90 characters.
+From you: nothing, your agent can fix it from the brief.  Evidence →  Brief for agents
+Checked 12 of 140 journeys (touched by this change) · 3 min · compared with main @ 1b63234
+```
+
+- **A verdict in four lines:** ✅ Ship it, ❌ Don't ship, or ⚠️ Not sure (the check could not complete: never blamed on
+  the product). One sentence built from what the app actually saved, what you need to do, and how much was checked.
+- **Only what the change touches:** the journeys its files, API routes and tables can break, the critical ones and a
+  small rotating sample. Only problems the change introduces block it.
+- **The line that did it:** the brief ranks the hunks of the change by the data that went wrong (the hunk that writes
+  `comments.body`, in the handler of the route the journey called) and says how to reproduce it.
+- **Evidence:** the screens on `main` and in the change side by side, the saved values, every step.
+- **A gate agents cannot game:** a change that removes or softens checks waits for a person to approve it.
+
+## Fix it with your agent
+
+In Claude Code, `/assay:fix <brief link>` reads the brief, opens the suspect code, reproduces the failure, fixes the
+product and re-runs the journeys until the verdict is ✅. Other agents use the `assay` MCP server (`assay mcp`:
+`assay_status`, `assay_brief`, `assay_run`, `assay_artifact`) or `assay brief <link>` for the same JSON.
 
 ## How a journey is checked
 
@@ -85,7 +102,7 @@ jobs:
 ```
 
 `.assay/` describes the app and its journeys. Start it with
-`uvx --from https://github.com/RazinAleksandr/assay/raw/v0/dist/assay-0.3.0-py3-none-any.whl assay init`,
+`uvx --from https://github.com/RazinAleksandr/assay/raw/v0/dist/assay-1.0.0-py3-none-any.whl assay init`,
 then follow [the format](docs/AUTHORING.md).
 
 ## What leaves your CI
@@ -99,6 +116,6 @@ private: they open from the link in the pull request comment.
 | | |
 |---|---|
 | `action.yml` | the GitHub Action |
-| `.claude-plugin/`, `skills/`, `bin/` | the Claude Code plugin: `/assay:connect` and the `assay` skill |
+| `.claude-plugin/`, `.mcp.json`, `skills/`, `bin/` | the Claude Code plugin: `/assay:connect`, `/assay:fix`, the `assay` skill and MCP server |
 | `dist/` | the scanner the action and the plugin run |
 | `docs/AUTHORING.md` | the journey and profile format |

@@ -76,14 +76,19 @@ Tell the user in at most 5 lines: the app, how it starts, where its state lives,
 Write 5-10 journeys in `.assay/cases/<area>.yaml` (AUTHORING.md §2-3). Replace the generic smoke case with a real
 one or keep it tagged `smoke`.
 
+- `promise:` one sentence of what the product promises the user ("A comment is saved in full"). People read it in
+  the verdict instead of the id, so write it in the product's words.
+- `critical: true` on the 1-3 journeys that must never break (sign-in, paying, losing data): they run on every pull
+  request even when Assay picks only the journeys a change can affect. `ai: true` on journeys of AI features: the
+  benchmark repeats those.
 - Steps are what a person does, with targets a person perceives (role, label, text); CSS only when nothing else works.
 - Every journey that changes data has a `state` check that proves it was saved and `allowed_changes` (nothing else
   changed). A journey that starts from seeded data proves it with `expect_before`.
 - `severity` by user impact. Tag 2-3 fast journeys `smoke`.
 - `must` holds facts decided by code. `judge` only for meaning code cannot check.
 
-Prove each one: `assay run .assay -k <id> --no-scan`, then read `.assay/runs/<newest>/report.md` and, for a failed
-step, its screenshot. Iterate until it passes, or until you are sure the product is wrong:
+Prove each one: `assay run .assay -k <id> --no-scan`, then `assay brief` (the newest run as JSON: what failed,
+expected against what the app saved, the step) and, for a failed step, its screenshot. Iterate until it passes, or until you are sure the product is wrong:
 
 - Wrong target, timing or start state: fix the journey.
 - The app really misbehaves (not saved, the wrong item deleted, an error): keep the journey with the precise check,
@@ -110,7 +115,8 @@ exact `gh secret set NAME` command. The same applies to `ANTHROPIC_API_KEY` if j
 1. Stage only `.assay/` and the workflow files (`.assay/.gitignore` keeps `runs/` and `.state/` out). Commit
    "Connect the Assay quality gate", push `assay/connect`.
 2. Open the pull request: `gh pr create --fill`. Without `gh`, give the user the compare URL from the push output.
-3. Wait for the Assay check (`gh pr checks --watch`), 5-10 minutes. The first pull request has no analysis of the
+3. Wait for the Assay check (`gh pr checks --watch`), 5-10 minutes. Its comment starts with the verdict
+   (✅ Ship it, ❌ Don't ship, ⚠️ Not sure) and one sentence why. The first pull request has no analysis of the
    default branch to compare with, so problems show as warnings and block nothing.
 4. CI inconclusive or failing while local runs pass: that is the CI environment. Read `gh run view --log-failed`
    and the `assay-ci-evidence` artifact, fix the workflow, push again.
@@ -120,7 +126,8 @@ exact `gh secret set NAME` command. The same applies to `ANTHROPIC_API_KEY` if j
 - The pull request link and the analysis link from its Assay comment.
 - The journeys covered, by title, and every `known-bug` in one line each.
 - Next step: merge. The default branch's first analysis becomes the reference; after that a pull request fails only
-  for problems it introduces.
+  for problems it introduces, runs only the journeys its change can affect (plus the critical ones and a small sample),
+  and its comment links a brief that `/assay:fix` turns into a fix.
 - The project lives at `http://46.225.104.43:8080/gh/<owner>/<repo>`. A private repository's project opens through
   the link in the pull request comment.
 
