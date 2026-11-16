@@ -102,7 +102,7 @@ jobs:
 ```
 
 `.assay/` describes the app and its journeys. Start it with
-`uvx --from https://github.com/RazinAleksandr/assay/raw/v0/dist/assay-1.0.0-py3-none-any.whl assay init`,
+`uvx --from https://github.com/RazinAleksandr/assay/raw/v0/dist/assay-1.1.0-py3-none-any.whl assay init`,
 then follow [the format](docs/AUTHORING.md).
 
 ## What leaves your CI
