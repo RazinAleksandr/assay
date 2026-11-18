@@ -1,0 +1,28 @@
+# The product's own pipeline: unit tests, then the GitHub Action exactly as users get it (this repository's root,
+# what `uses: RazinAleksandr/assay@v0` checks out) on a clean runner.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+
+  action:
+    name: Action on a clean runner (examples/hello)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write                     # signs in to the hosted Assay service, which files it under gh/<this repo>
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./                          # what apps use as RazinAleksandr/assay@v0
+        with:
+          project: examples/hello/.assay

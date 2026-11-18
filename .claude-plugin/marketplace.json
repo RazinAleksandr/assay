@@ -1,12 +1,16 @@
 {
   "name": "assay",
-  "owner": {"name": "Assay"},
-  "metadata": {"description": "Assay, the quality gate for the running app: connect a repository in one prompt."},
+  "owner": {
+    "name": "Assay"
+  },
+  "metadata": {
+    "description": "Assay: end-to-end testing and LLM benchmarking for your product, set up by Claude in one prompt."
+  },
   "plugins": [
     {
       "name": "assay",
       "source": "./",
-      "description": "Connect a repository to the Assay quality gate in one prompt: Claude reads the app, writes its user journeys, proves them on the running app, adds the CI workflow and opens the pull request.",
+      "description": "Set up end-to-end testing, a pull request quality gate and LLM benchmarks for your product in one prompt: Claude studies the product, writes journeys that check what it actually saved, proves them, adds CI. Plus an agentic freedom test that explores the product and keeps what it finds as regression journeys.",
       "category": "testing"
     }
   ]

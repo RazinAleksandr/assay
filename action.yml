@@ -1,5 +1,5 @@
 # The Assay scanner as a GitHub Action: `uses: RazinAleksandr/assay@v0` in an app's workflow.
-# The public repo RazinAleksandr/assay ships this file with the built scanner in dist/; here (`uses: ./`) it builds from source.
+# The action is this repository: uv builds the scanner from its source (a wheel in dist/, if one is there, wins).
 # Same role as SonarCloud's scan action: run the analysis, upload it, gate the pipeline, link to the server.
 # The job signs in with GitHub's OIDC token: give it `permissions: id-token: write` and nothing else to configure.
 name: Assay quality gate

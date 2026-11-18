@@ -1,0 +1,31 @@
+[project]
+name = "assay"
+version = "1.2.0"
+description = "Assay — the quality gate for the running app: state-grounded, AI-judged end-to-end checks for any web, mobile-web, game or AI product."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = [
+  "playwright==1.65.0",   # pinned: the scanner image and the browsers it downloads match
+  "pyyaml>=6.0",
+]
+
+[project.scripts]
+assay = "assay.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["assay"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.uv]
+# `uvx --from <this repo>` (the CI action) rebuilds when the code changes, not only when pyproject does
+cache-keys = [{file = "pyproject.toml"}, {file = "assay/**/*.py"}, {file = "assay/**/*.js"}, {file = "assay/**/*.css"}]

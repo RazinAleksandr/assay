@@ -1,0 +1,20 @@
+# The smallest complete Assay profile: a static notes app whose state lives in localStorage.
+# The product's own CI runs it through action.yml on a clean runner (see .github/workflows/ci.yml).
+name: hello
+title: Notes — Assay example app
+base_url: http://127.0.0.1:5310
+app:
+  start: {cmd: "python3 -m http.server 5310 --bind 127.0.0.1 --directory site", cwd: ".."}
+  ready: {url: "http://127.0.0.1:5310/", timeout_s: 30}
+
+# the app's state, read before and after every journey
+probes:
+  notes: {js: "() => JSON.parse(localStorage.getItem('notes') || '[]').map((n) => n.text)"}
+
+scan:
+  routes: [/]
+  viewports: [desktop, mobile]
+
+gate:
+  fail_on_case_fail: true
+  max_new: {blocker: 0, critical: 0}

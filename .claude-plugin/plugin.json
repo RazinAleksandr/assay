@@ -1,8 +1,28 @@
 {
   "name": "assay",
-  "description": "The quality gate for the running app. /assay:connect wires a repository to Assay CI; the assay skill grows journeys, explains failed gates and runs benchmarks of AI features.",
-  "author": {"name": "Assay"},
+  "description": "End-to-end testing and LLM benchmarking for your product, with your own Claude. /assay:connect studies the product and sets it all up in one prompt: journeys that check what the app actually saved, a quality gate on every pull request, a benchmark of its AI features. Then /assay:explore lets an agent loose on it, /assay:bench compares models and prompts, /assay:fix fixes a failed gate.",
+  "author": {
+    "name": "Assay"
+  },
   "homepage": "https://github.com/RazinAleksandr/assay",
   "repository": "https://github.com/RazinAleksandr/assay",
-  "keywords": ["testing", "e2e", "quality-gate", "ci", "playwright", "ai-evals"]
+  "license": "Apache-2.0",
+  "keywords": [
+    "testing",
+    "e2e",
+    "quality-gate",
+    "ci",
+    "playwright",
+    "exploratory-testing",
+    "llm-evals",
+    "benchmark"
+  ],
+  "mcpServers": {
+    "assay": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/assay",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
 }

@@ -113,21 +113,130 @@ they add the label `assay-approved` to the pull request and re-run the Assay job
 | `anthropic-api-key` | | enables judge checks |
 | `command` | `ci` | `bench` runs the benchmark |
 
+## Deployed app
+
+When the app cannot start in a CI job (a GPU, devices, a large backend, paid services), Assay tests it where it is
+hosted. The profile has no `app.start`, takes `base_url: "{env.ASSAY_BASE_URL}"` and its test accounts from secrets
+(AUTHORING.md, "Testing a deployed app"). In (a) and (b) the job installs nothing of the app: checkout, the address,
+the Assay step. `postgres` probes need `psql`: GitHub's Ubuntu runners have it, elsewhere `apt-get install
+postgresql-client`.
+
+### (a) A stable staging URL
+
+Staging runs what was deployed, not the pull request's code, so gate it after each deploy, not on pull requests.
+Add the job to the workflow that deploys staging:
+
+```yaml
+  assay:
+    needs: deploy-staging            # the job that deploys main to staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency: {group: assay-staging, cancel-in-progress: false}   # one run at a time on the shared stand
+    permissions: {contents: read, id-token: write}
+    env:
+      ASSAY_BASE_URL: ${{ vars.STAGING_URL }}               # repository variable (or a secret)
+      QA_USER: ${{ vars.QA_USER }}
+      QA_PASSWORD: ${{ secrets.QA_PASSWORD }}
+      DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL_RO }}  # a read-only role, for postgres probes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: RazinAleksandr/assay@v0
+```
+
+### (b) A preview per pull request (Vercel, Netlify)
+
+The preview runs the pull request's code, so this one gates pull requests. A pull request is compared with the last
+analysis of its target branch and blocks nothing until there is one, so run (a) for `main` as well (a staging stand
+built from `main`, never production). Wait for the preview of the head commit and export its URL before the Assay
+step; hosts such as Vercel report each preview as a GitHub deployment of the commit:
+
+```yaml
+on: {pull_request: {}}
+jobs:
+  assay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions: {contents: read, deployments: read, pull-requests: write, id-token: write}
+    env:
+      QA_USER: ${{ vars.QA_USER }}
+      QA_PASSWORD: ${{ secrets.QA_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for the preview deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          for i in $(seq 60); do
+            for id in $(gh api "repos/$GITHUB_REPOSITORY/deployments?sha=$SHA" --jq '.[].id'); do
+              url=$(gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" \
+                --jq '.[0] | select(.state == "success") | .environment_url // empty')
+              if [ -n "$url" ]; then echo "ASSAY_BASE_URL=$url" >> "$GITHUB_ENV"; exit 0; fi
+            done
+            sleep 10
+          done
+          echo "::error::no successful preview deployment of $SHA after 10 minutes"; exit 1
+      - uses: RazinAleksandr/assay@v0
+```
+
+When the repository deploys several apps, add `&environment=<name>` (Vercel: `Preview`) to the deployments query.
+One option for Vercel instead of the loop is a third-party action:
+
+```yaml
+      - uses: patrickedqvist/wait-for-vercel-preview@v1.3.1
+        id: preview
+        with: {token: "${{ secrets.GITHUB_TOKEN }}", max_timeout: 600}
+      - run: echo "ASSAY_BASE_URL=${{ steps.preview.outputs.url }}" >> "$GITHUB_ENV"
+```
+
+A protected preview needs its bypass header: in `assay.yaml`,
+`browser: {headers: {x-vercel-protection-bypass: "{env.VERCEL_AUTOMATION_BYPASS_SECRET}", x-vercel-set-bypass-cookie: "true"}}`,
+and the secret in the job's `env:` (Vercel: Project settings → Deployment Protection → Protection Bypass for Automation).
+
+### (c) A self-hosted runner on the machine with the hardware
+
+Register the machine as a runner with a label (Settings → Actions → Runners), then pick it. The job can build and
+start the pull request's code there with `app.start` as usual, or test what already runs on it (no `app.start`,
+`base_url: http://127.0.0.1:<port>`):
+
+```yaml
+jobs:
+  assay:
+    runs-on: [self-hosted, gpu]
+    timeout-minutes: 60
+    permissions: {contents: read, pull-requests: write, id-token: write}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: RazinAleksandr/assay@v0
+        with: {browsers: chromium}
+```
+
+The action installs the browsers with their system libraries (`apt-get` through `sudo`), so on Linux the runner's
+user needs passwordless sudo. A pull request's code runs on that machine: keep self-hosted runners to private
+repositories, or require approval for pull requests from forks.
+
 ## Benchmark workflow (apps with AI features): `.github/workflows/assay-bench.yml`
 
 A model answers differently every time, so one green run proves little. The benchmark repeats every journey and
 compares **arms**: the same app started with other settings. The first arm is the baseline. The result goes to the
 project's Benchmarks page, the job summary and, on a pull request, one comment.
 
+What to compare goes into `.assay/assay.yaml`, so the step needs no arguments:
+
+```yaml
+bench:
+  attempts: 3
+  arms:                          # the first is the baseline
+    current: env:MODEL=gpt-5
+    candidate: env:MODEL=gpt-5-mini
+```
+
 ```yaml
 # Assay benchmark: repeats the journeys and compares arms (models, prompts) with intervals.
+# What it compares is `bench:` in .assay/assay.yaml; this workflow says when.
 name: Assay benchmark
 on:
   workflow_dispatch:
-    inputs:
-      attempts:
-        description: Attempts per journey and arm
-        default: "3"
   schedule:
     - cron: "0 6 * * 1"      # every Monday
 jobs:
@@ -149,16 +258,31 @@ jobs:
         with:
           command: bench
           browsers: chromium
-          args: >-
-            --attempts ${{ inputs.attempts || '3' }}
-            -k 'ai.*'
-            --arm current=env:MODEL=gpt-5
-            --arm candidate=env:MODEL=gpt-5-mini
 ```
 
-- Arms: `name=env:VAR=value[,VAR2=value]` starts the app with those env vars. Use the variable the app already reads
-  to pick the model or prompt. If there is none, leave out `--arm`: the benchmark then measures how stable the
-  current build is (A/A).
-- `-k 'ai.*'`: benchmark only the AI journeys (give them ids that start with `ai.`).
+To override the profile in one workflow (a manual run with more attempts, another candidate), pass the command-line
+flags in `args`. `--arm` replaces all the profile's arms; `--attempts` and `-k` replace only their own setting:
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      attempts: {description: Attempts per journey and arm, default: "5"}
+# …
+      - uses: RazinAleksandr/assay@v0
+        with:
+          command: bench
+          browsers: chromium
+          args: >-
+            --attempts ${{ inputs.attempts || '3' }}
+            --arm current=env:MODEL=gpt-5
+            --arm candidate=env:MODEL=gpt-5.1
+```
+
+- Arms: `name: env:VAR=value[,VAR2=value]` starts the app with those env vars. Use the variable the app already reads
+  to pick the model or prompt. If there is none, leave out `arms`: the benchmark then measures how stable the current
+  build is (A/A).
+- Journeys: the ones marked `ai: true` (else all). `select: [tag:assistant]` in `bench:` picks others. To try one AI
+  journey on many inputs, give it a dataset (`each:`, see "Datasets" in AUTHORING.md).
 - The readiness check should prove the model answers (for example a health URL that calls the model). A missing key
   then makes the run inconclusive instead of failing journeys.

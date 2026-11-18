@@ -1,0 +1,21 @@
+{
+  "prefetch": [{
+    "tag": "assay-nav",
+    "where": { "and": [
+      { "href_matches": "/*" },
+      { "not": { "href_matches": "/login" } },
+      { "not": { "href_matches": "/logout" } },
+      { "not": { "href_matches": "/api/*" } },
+      { "not": { "href_matches": "/a/*" } },
+      { "not": { "href_matches": "/auth/*" } },
+      { "not": { "href_matches": "/verify" } },
+      { "not": { "href_matches": "/reset" } },
+      { "not": { "href_matches": "/static/*" } },
+      { "not": { "href_matches": { "search": "*view=*" } } },
+      { "not": { "href_matches": { "search": "*k=*" } } },
+      { "not": { "href_matches": { "search": "*format=*" } } },
+      { "not": { "selector_matches": "[download], [rel~=nofollow], [target=_blank], .no-speculate" } }
+    ] },
+    "eagerness": "moderate"
+  }]
+}

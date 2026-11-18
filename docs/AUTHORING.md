@@ -16,7 +16,7 @@ A project is the `.assay/` folder in the app's repository: `assay.yaml` (the app
 ```
 
 In CI: `assay ci` (see the product README). Locally, from the app repo:
-`assay run .assay [--scan] [-k 'glob*' | -k tag:x | -k group:feed | -k is:critical] [--baseline .assay/runs/<id>]` ·
+`assay run .assay [--scan] [--confirm] [-k 'glob*' | -k tag:x | -k group:feed | -k is:critical] [--baseline .assay/runs/<id>]` ·
 re-grade without re-running: `assay grade .assay .assay/runs/<id>` · preflight: `assay doctor .assay` ·
 what to fix, as JSON for a coding agent: `assay brief [.assay/runs/<id> | <analysis URL>]`.
 
@@ -38,6 +38,7 @@ auth:                                            # how `as: <account>` logs in (
 http_headers: {Origin: "{origin}", X-CSRF-Token: "{vars.csrf}"}   # added to every `http` step
 probes:                                          # the app's state as JSON — read before and after each case
   posts: {sqlite: "{env.DATA_DIR}/app.sqlite", sql: "select id, caption from posts order by id"}
+  likes: {postgres: "{env.DATABASE_URL}", sql: "select post_id, count(*) n from likes group by post_id"}   # via psql
   me:    {http: "GET /api/auth/session", select: user, when_as: "*"}   # read only in signed-in journeys
                                                  # (when_as: mila | [mila, noah] | "*"); out of scope = not part of
                                                  # that journey's state. A probe in scope that fails makes `state`,
@@ -55,11 +56,14 @@ scan: {routes: ["/", "/explore"], as: mila, viewports: [desktop, mobile], max_pa
 judge: {backend: claude-cli, model: sonnet, must_votes: 3, should_votes: 1}   # or anthropic / none
 gate:
   fail_on_case_fail: true
-  max_new: {blocker: 0, critical: 0}
+  max_new: {blocker: 0, critical: 0}  # new = not in the reference analysis; with none yet (a branch's first analysis,
+                                      # a local run) what is there is the baseline: listed, never blocking
   min_rating: {reliability: B}        # a dimension nothing measured has no rating: the gate is then INCONCLUSIVE
   max_inconclusive: 0.2
   min_cases: 1                        # fewer journeys executed → INCONCLUSIVE, never PASSED
   block_on_weakened: true             # a pull request that weakens checks waits for the label `assay-approved`
+  confirm: true                       # `assay ci` runs a failure that blocks once more first; passing then = flaky, not blocking
+  confirm_max: 10                     # more failing journeys than this: no second run (they would block anyway)
 select:                               # pull requests only; the default branch always runs every journey
   mode: auto                          # auto (default) | all
   sample: 0.1                         # safety sample of the journeys the change does not touch
@@ -105,6 +109,13 @@ A change that weakens the gate (removes a journey or a `must` check, moves one t
 allows more errors or data changes, relaxes a limit, adds `ignore`/`volatile` entries, loosens `gate`) is listed and
 blocks until someone adds the label `assay-approved` to the pull request and re-runs the job.
 
+**A failure must reproduce.** Before a journey's failure blocks, `assay ci` runs that journey once more from a fresh
+app (reset and started as for the first run). Fails again: the comment says "Reproduced on a second run". Passes: it is
+flaky, listed as "failed once, passed on a second run" and blocks nothing, so the gate passes if nothing else blocks.
+A second run that could not check the journey leaves the failure standing. Its evidence is in `<run>/confirm/` and what
+it found in `<run>/confirm.json`, so `assay grade` reaches the same gate. More than `gate.confirm_max` (10) failing
+journeys get no second run: they block. Locally `assay run --confirm` does the same; `gate.confirm: false` turns it off.
+
 ### How a run goes (what is shared between journeys)
 
 1. **Start.** If something already answers at `app.ready`, Assay uses it as is: no reset, no start. That is why the
@@ -123,6 +134,49 @@ edits, let it work on a record it creates in `setup:` (or on one no other journe
 `auth.http` sends its request from the browser context, so the session cookie lands in the browser; `auth.steps`
 logs in through the UI instead; `auth.check` (`GET /api/me`) proves it worked, otherwise the journey is INCONCLUSIVE.
 `assay bench` starts the app from `app.reset` for every attempt.
+
+### Testing a deployed app (staging, preview, special hardware)
+
+Some products cannot start inside a CI job: they need a GPU or devices, a large backend, paid third-party services.
+Assay then tests them where they already run: a staging stand, a pull request's preview deployment, or the machine
+with the hardware (CI templates for all three: "Deployed app" in the connect skill's `references/ci.md`).
+
+```yaml
+base_url: "{env.ASSAY_BASE_URL}"                 # the stand's address, from the CI job
+app: {ready: {url: "{base_url}/api/health", timeout_s: 60}}    # optional; no start, no reset
+accounts: {qa: {username: "{env.QA_USER}", password: "{env.QA_PASSWORD}"}}   # test accounts from CI secrets
+probes:
+  orders:   {http: {path: /api/test/orders?owner=qa, headers: {Authorization: "Bearer {env.STAND_API_TOKEN}"}}}
+  comments: {postgres: "{env.DATABASE_URL}", sql: "select id, body from comments where author = 'qa' order by id"}
+  jobs:     {cmd: "ssh -o BatchMode=yes qa@gpu-01 /opt/app/bin/jobs --json"}
+```
+
+- **No `app.start`.** Assay neither starts nor resets the app. It waits up to `app.ready.timeout_s` (default 30 s: a
+  preview may be waking up) for `app.ready.url` (default `base_url`) to answer, else the run is INCONCLUSIVE.
+- **A protected preview** (Vercel's deployment protection, a stand behind a token) gets its bypass header on the run's
+  requests to the app's own origin (pages, API calls, the probes' and logins' requests, the readiness check; never a
+  third-party origin, never over a header the page sets itself):
+  `browser: {headers: {x-vercel-protection-bypass: "{env.VERCEL_AUTOMATION_BYPASS_SECRET}", x-vercel-set-bypass-cookie: "true"}}`.
+  A stand behind basic auth: `browser: {http_credentials: {username: "{env.STAND_USER}", password: "{env.STAND_PASSWORD}"}}`.
+- **Addresses and secrets come from the environment.** An unset `{env.ASSAY_BASE_URL}` (or an empty one) stops every
+  command with a configuration error that names it (exit 3). Account values expand at login, so the job only has to
+  export them; a missing one makes the journey INCONCLUSIVE, never FAILED. `assay doctor` says which deployed app it
+  tests, whether it answers, and lists every `{env.X}` the profile reads that is not set, with where it is used.
+- **Reading state remotely.** An `http` probe runs in the journey's browser with its cookies: an endpoint the test
+  account may read, or a test/admin API of the stand with a token in `headers`. `postgres` runs the query through
+  `psql` (GitHub's Ubuntu runners have it; elsewhere `apt-get install postgresql-client`), SELECT/WITH only, `as: rows |
+  row | value` like `sqlite`; connect as a read-only role (`grant select` on what the probes read), because that, not
+  the SELECT rule, is what keeps a shared database safe. Errors never show the password. `cmd` reads anything that
+  prints JSON, for example over `ssh` on the machine with the hardware.
+- **Isolation on a shared stand.** Other people, other pull requests' runs and the stand's own jobs write to it while a
+  journey runs. Put `{vars.uid}` (unique per journey run) in every record a journey creates (`value: "Q3 report
+  {vars.uid}"`) and check that record: `state: {orders: {contains: {title: "Q3 report {vars.uid}"}}}`. Scope probes to
+  what the test accounts own (`where author = 'qa'`, `GET /api/me/orders`), not whole tables. Use `contains`, not
+  absolute counts; `delta` only on a probe nobody else writes to meanwhile. Never put `allowed_changes` over a probe of
+  a table other people write to concurrently, unless the probe is scoped to the test account: their writes would
+  count as your journey's side effects.
+- **Never production with real users.** Journeys create and change data, and the evidence (screenshots, page text,
+  the values probes read) goes to the Assay server. Use a stand made for testing, with test accounts.
 
 ## 2. Case
 
@@ -216,6 +270,35 @@ Any step accepts `timeout: <ms>`.
 **Matchers:** a literal (equality) or `{eq, ne, gt, gte, lt, lte, len, contains, not_contains, every, exists, regex, any_of, delta, unchanged}` — `delta` compares with the value before the journey (list → length), `contains` on a list matches an element by subset (`{caption: "~slow"}` = case-insensitive substring).
 **Diff paths** (for `changed` / `allowed_changes`): list items are keyed by `id`/`uuid`/`key`/`slug`/`name` when present, e.g. `posts.id=42.caption`; otherwise by index `posts[3]`. A pattern `posts` allows anything under `posts`; globs work (`posts.*.likes`).
 
+### Datasets: one journey over many inputs
+
+`each:` runs one journey over a list of rows, as evals tools run one test over a dataset (an AI feature asked many things):
+
+```yaml
+- id: draft.reply
+  title: The assistant drafts a reply to {row.ticket}
+  ai: true
+  each:                       # inline rows, or a file relative to .assay/: fixtures/tickets.csv | .json | .yaml
+    - {id: late-delivery, ticket: T-1001, expect: refund}
+    - {id: wrong-size, ticket: T-1002, expect: exchange}
+  steps:
+    - goto: /?t={row.ticket}
+    - click: {role: button, name: Draft reply}
+  must:
+    - judge: The draft offers a {row.expect}
+```
+
+- Every row is a journey of its own: `draft.reply[late-delivery]` (the row's `id`, else its number: `draft.reply[2]`),
+  with everything else of the case (`ai`, `critical`, `group`, tags). Its evidence records the row.
+- `{row.<field>}` is filled in every string of the case when the suite loads (`{row.customer.name}` for nested fields),
+  as text. A field the row lacks is a configuration error. `{vars.uid}`, `{env.X}` are left for run time.
+- A title or promise that names no row field gets the row id in parentheses, `(late-delivery)`, so rows read apart.
+- Files: `.csv` (the header names the fields), `.json` or `.yaml` (a list of objects). Keep them out of `cases/`
+  (everything there is read as journeys), e.g. in `fixtures/`.
+- `-k 'draft.reply[late-delivery]'` runs one row; `-k draft.reply` or `-k 'draft.reply*'` all of them.
+- To the gate rows are journeys: a removed row is a removed journey (it waits for `assay-approved`), an edited row an
+  edited one.
+
 ## 3. Rules for good cases
 1. **Facts by code, meaning by the judge.** If code can check it, don't ask the judge. One condition per judge item.
 2. **Every mutating journey gets `allowed_changes`.** It finds the bugs nobody wrote an assertion for.
@@ -259,12 +342,51 @@ assay bench .assay --arm prod=https://app.example.com           # a build that i
 assay bench .assay                                              # no arms: A/A, the noise floor of the gate
 ```
 
+The usual settings live in `assay.yaml`, so `assay bench .assay` (and the CI step) needs no arguments; `--arm`,
+`--attempts` and `-k` on the command line replace them for one run:
+
+```yaml
+bench:
+  attempts: 3                 # default 3
+  select: [is:ai]             # -k selectors; default: the journeys marked ai: true, else all
+  arms:                       # first is the baseline; the --arm syntax; a folder is relative to .assay/
+    sonnet: env:ASSISTANT_MODEL=sonnet
+    haiku: env:ASSISTANT_MODEL=haiku
+```
+
 Per arm: **pass rate** (share of journeys passing on one attempt) with a 95% bootstrap interval over journeys,
-**all attempts pass**, the **difference** from the baseline with its interval (✱ when it excludes zero), and the
-**flaky** journeys (mixed verdicts across attempts). Inconclusive attempts are dropped in every arm, so arms compare
-on the same set. Every attempt starts the app from its reset state.
+**all attempts pass**, the **difference** from the baseline with its interval (✱ when it excludes zero), the
+**flaky** journeys (mixed verdicts across attempts) and the **median journey** and **median answer** time (the AI's
+turn in `ask` steps): a cheaper model that is as good but slower is a trade-off to see. Inconclusive attempts are
+dropped in every arm, so arms compare on the same set. Every attempt starts the app from its reset state.
 
 In CI it is a separate workflow (`command: bench` in the action; see the product README). With `ASSAY_HOST_URL`
 the result is published to the server (project → Benchmarks), the job summary gets the table, and a pull request
 gets one comment, updated on every run. Readiness checks should prove the model answers (e.g. `/api/health?model=1`):
 a missing key or login then makes the run inconclusive instead of failing journeys.
+
+## 6. Agentic freedom test (explore)
+
+Journeys check what someone thought to write down. The freedom test finds the rest: a coding agent uses the product
+freely, with a charter ("explore comments with long and multilingual text to discover text saved differently from what
+was typed"), while Assay runs the browser and tells it, after every action, what the screen does not: what changed in
+the app's data (every probe, record by record), new console errors, failed requests and the API calls made.
+
+The agent is the person's own (Claude Code through `/assay:explore`, or any agent through `assay mcp`); no model runs
+inside Assay. The MCP tools:
+
+| tool | |
+|---|---|
+| `assay_explore_start(charter, as?, viewport?, url?, fresh?)` | starts the app from its golden state (`app.reset`, `app.start`) unless it is already running or deployed, opens one browser signed in as `as`, returns the first page and the data it can watch |
+| `assay_explore_act(steps, why?, look?, audit?)` | runs steps of §2 in order, stopping at the first that fails; returns the URL, title, accessibility tree, `data` (changes), `errors`, `failed_requests`, `calls`, the screenshot path; `look` adds the screenshot as an image, `audit` accessibility and layout checks |
+| `assay_explore_note(title, detail?, kind?, severity?, step?)` | a finding at a step: `bug`, `ux`, `question` or `idea`; `blocker` … `minor` |
+| `assay_explore_finish()` | closes and writes `.assay/runs/explore-<time>/` |
+
+The folder holds `session.json` (every step with what it changed), `findings.md` (each finding with the steps that led
+to it and its screenshot) and `trail.yaml` (the steps that worked, as a draft journey). A finding is reported as a bug
+only once it reproduces: written as a journey on a record it creates, tagged `known-bug` and `explore`, it must fail
+twice on a fresh app on the check that names the bug. It then stays in `cases/` as a regression journey: it never blocks
+while the bug is there, and turns green the day it is fixed.
+
+Explorations run on demand, never on every pull request: they cost the agent's time and tokens, and a gate must be
+deterministic.

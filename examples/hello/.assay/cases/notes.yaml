@@ -1,0 +1,36 @@
+cases:
+  - id: notes.add
+    title: A note typed and submitted appears in the list and is saved
+    severity: critical
+    steps:
+      - goto: /
+      - fill: {label: New note, value: Buy oat milk}
+      - click: {role: button, name: Add note}
+    must:
+      - no_errors: true
+      - visible: {text: Buy oat milk}
+      - state: {notes: [Buy oat milk]}
+      - allowed_changes: [notes]
+
+  - id: notes.delete
+    title: Deleting a note removes it from the list and from storage
+    severity: major
+    steps:
+      - goto: /
+      - fill: {label: New note, value: Call the bank}
+      - click: {role: button, name: Add note}
+      - click: {role: button, name: Delete Call the bank}
+    must:
+      - no_errors: true
+      - visible: {text: No notes yet}
+      - state: {notes: []}
+
+  - id: notes.empty_rejected
+    title: An empty note is refused with a message and nothing is saved
+    severity: major
+    steps:
+      - goto: /
+      - click: {role: button, name: Add note}
+    must:
+      - visible: {text: A note cannot be empty}
+      - allowed_changes: []
