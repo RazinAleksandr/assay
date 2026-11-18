@@ -38,8 +38,9 @@ runs:
         INPUT_BROWSERS: ${{ inputs.browsers }}
       run: |
         from="$GITHUB_ACTION_PATH"
-        whl=$(ls "$GITHUB_ACTION_PATH"/dist/assay-*-py3-none-any.whl 2>/dev/null | tail -n 1)
-        [ -n "$whl" ] && from="$whl"
+        shopt -s nullglob                 # no dist/ is the usual case: steps run under -e -o pipefail, so no failing ls
+        wheels=("$GITHUB_ACTION_PATH"/dist/assay-*-py3-none-any.whl)
+        if [ ${#wheels[@]} -gt 0 ]; then from="${wheels[${#wheels[@]}-1]}"; fi
         echo "from=$from" >> "$GITHUB_OUTPUT"
         uvx --from "$from" assay --version
         uvx --from "$from" assay browsers --with-deps $INPUT_BROWSERS
