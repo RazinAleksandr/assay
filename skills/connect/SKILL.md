@@ -30,7 +30,7 @@ which app of a monorepo, whether a behaviour you found is intended. Post one sho
 1. `.assay/assay.yaml` already exists: the product is connected. Switch to the `assay` skill.
 2. `git remote get-url origin` on GitHub: the hosted service works with no setup. Another host (GitLab, none): say
    that local testing, exploration and benchmarks work as is, and the pull request gate needs a self-hosted
-   `assay server` (README, "Self-hosting"); carry on without stage 7's pull request unless the user has one.
+   `assay server` (docs/SELF_HOSTING.md); carry on without stage 7's pull request unless the user has one.
 3. `assay --version`, then `assay browsers` (downloads Chromium once, about a minute).
 4. `git status`: leave the user's uncommitted changes alone. Create the branch `assay/connect` from the default branch.
 

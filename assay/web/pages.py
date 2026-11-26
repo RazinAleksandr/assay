@@ -1869,7 +1869,7 @@ variables:
                 f'<span class="mono fs-xs anywhere">{e(badge)}</span></div>' if key else "")
              + '</li></ol>'
              f'<p class="mute fs-sm">Free and open source (Apache-2.0). To keep the analyses on your own machine, run the whole '
-             f'server yourself: <span class=mono>assay server</span> (<a href="{REPO_URL}#self-hosting">self-hosting</a>).</p>')
+             f'server yourself: <span class=mono>assay server</span> (<a href="{REPO_URL}/blob/main/docs/SELF_HOSTING.md">self-hosting</a>).</p>')
     head = (page_head([*base_crumbs(ctx.p), ("Set up CI", None)], "Set up CI") if ctx else
             page_head([("Connect a repository", None)], "Connect a repository", meta=["One CI step. Its first run creates the project, with no tokens to set up."]))
     body = head + f'<div class=page><div class=panel><div class="panel-b pad-lg">{steps}</div></div></div>'
@@ -1999,20 +1999,54 @@ def landing_page(store, viewer, public: str) -> str:
         '<figcaption>One action of the freedom test. The screen says Saved; the database kept 21 of the 54 characters. '
         'The agent writes that as a journey, it fails twice, and it stays in the suite.</figcaption></figure>')
 
+    # Bugs Assay found in real apps (README: Real apps). Each one passed every check that looks at the page.
+    bugs = [
+        ("Kutt", "open-source URL shortener", "Editing a protected link through the API removes its password.",
+         "API 200 · screen “Link updated”", "links.protected  1 → 0"),
+        ("Kutt", "open-source URL shortener", "Editing a link moves its expiry 12 hours earlier.",
+         "API 200 · no error", "expiry  12 h earlier than set"),
+        ("Folio", "drawing studio", "Delete with nothing selected erases the whole layer.",
+         "no error", "canvas pixels  the layer is empty"),
+        ("Morrow", "social network", "Searching for “%” lists every account.",
+         "200 · no error", "search response  every account"),
+    ]
+    bug_cards = "".join(
+        f'<li class=lp-bug><p class=lp-bug-app><b>{e(app)}</b> <span>{e(kind)}</span></p><p class=lp-bug-t>{e(title)}</p>'
+        f'<dl><div><dt>The page</dt><dd>{e(page)}</dd></div><div><dt>The data</dt><dd class=mono>{e(data)}</dd></div></dl></li>'
+        for app, kind, title, page, data in bugs)
+    # Compared with what teams use today: categories, not vendors, so it stays true.
+    vs_rows = [
+        ("What decides pass or fail", "assertions someone wrote on the page", "an AI reading the screen", "the app's data before and after, plus each screen's sensors"),
+        ("A side effect nobody asserted", "unnoticed", "unnoticed", "fails the journey (<code>allowed_changes</code>)"),
+        ("Pull requests", "every red test blocks", "a result per run, sometimes screenshots against main", "only what the change newly broke blocks, after a re-run"),
+        ("A broken environment", "a red build", "a red build, or a model call to classify it", "“Not sure”, with who owns it"),
+        ("Who runs the model", "no model", "usually the vendor's", "your own Claude; the gate calls none"),
+    ]
+    vs = ('<div class="scroll" tabindex=0 role=region aria-label="Compared with page tests and AI test agents"><table class="tbl lp-vs"><thead><tr>'
+          '<th scope=col><span class=sr>Question</span></th><th scope=col>Page tests<br><span class=mute>Playwright, Cypress</span></th>'
+          '<th scope=col>AI test agents</th><th scope=col>Assay</th></tr></thead><tbody>'
+          + "".join(f'<tr><th scope=row>{q}</th><td>{a}</td><td>{b}</td><td>{c}</td></tr>' for q, a, b, c in vs_rows)
+          + '</tbody></table></div>')
+
     def points(items):
         return '<dl class=lp-points>' + "".join(f'<div><dt>{t}</dt><dd>{d}</dd></div>' for t, d in items) + '</dl>'
     body = (
         '<div class=lp>'
         '<section class=lp-hero><div class=lp-copy>'
-        '<h1>Your product\'s health and progress, while agents ship</h1>'
-        '<p class=lead>Assay tests your product end to end: it starts the app, walks through it the way people use it, checks what really got saved, '
-        'and posts the answer on the pull request with the evidence. For AI features it benchmarks models, prompts and builds '
-        'over many runs. Claude sets it all up in one prompt.</p>'
+        '<h1>Your tests read the screen. Assay reads what got saved.</h1>'
+        '<p class=lead>End-to-end checks on every pull request. Assay walks your app in a real browser like a person, '
+        'compares the database before and after each journey, and blocks the change that saved the wrong thing, even when '
+        'every request returned 200 and the page looked right.</p>'
         f'<div class=lp-cta><a class="btn primary" href="/setup">Connect a repository</a>'
-        f'<a class=btn href="#flow">How it works</a></div>'
-        '<p class="mute fs-sm">Free and open source. It runs on your own Claude, and you can host all of it yourself.</p>'
-        f'</div><figure class=lp-demo>{overview}<figcaption>What every project gets, in the format of SonarQube: the quality gate '
-        'with its conditions, and each quality rated A to E, on new code and overall.</figcaption></figure></section>'
+        f'<a class=btn href="{REPO_URL}">Read the code</a></div>'
+        '<p class="mute fs-sm">Set up by your own Claude in one prompt. Free, Apache-2.0, and you can host all of it yourself.</p>'
+        f'</div><figure class=lp-demo>{e2e_ex}</figure></section>'
+
+        '<section class=lp-sec id=found aria-labelledby=found-h><div class=lp-sh><h2 id=found-h>Bugs it found that every page check passed</h2>'
+        f'<a href="{REPO_URL}#what-it-found">How these were found</a></div>'
+        f'<ul class=lp-bugs role=list>{bug_cards}</ul>'
+        '<p class="mute fs-sm mt-2">Kutt is an app we did not write: Claude connected it unattended and one exploration found six bugs, '
+        'each confirmed by a journey that fails twice on a fresh app. Folio and Morrow are our demo apps.</p></section>'
 
         '<section class=lp-dir id=flow aria-labelledby=flow-h><div class=lp-dir-head>'
         '<h2 id=flow-h>One prompt sets it up</h2>'
@@ -2030,7 +2064,7 @@ def landing_page(store, viewer, public: str) -> str:
         '<h2 id=journeys-h>End-to-end journeys on every pull request</h2>'
         '<p class=lead>A journey is what a person does in your app: sign up, post, pay. You keep them in the repository as a '
         'few lines of YAML; Assay walks them in a real browser and decides whether the change can ship.</p></div>'
-        f'<div class=lp-dir-body>{points(e2e)}<div class=lp-ex>{e2e_ex}</div></div></section>'
+        f'<div class=lp-dir-body>{points(e2e)}<div class=lp-ex><figure class=lp-demo>{overview}<figcaption>Underneath, the structure of SonarQube: the quality gate with its conditions, and each quality rated A to E on new code and overall.</figcaption></figure></div></div></section>'
 
         '<section class=lp-dir id=explore aria-labelledby=explore-h><div class=lp-dir-head>'
         '<h2 id=explore-h>The agentic freedom test</h2>'
@@ -2044,6 +2078,9 @@ def landing_page(store, viewer, public: str) -> str:
         'models, prompts or builds on the same journeys and tells you which one to ship.</p></div>'
         f'<div class=lp-dir-body>{points(bench)}<div class=lp-ex>{bench_ex}</div></div></section>'
 
+        '<section class=lp-sec id=compare aria-labelledby=compare-h><h2 id=compare-h>How it differs</h2>'
+        f'{vs}<p class="mute fs-sm mt-2">Assay drives Playwright underneath. It adds the data oracle, the gate and the history around it.</p></section>'
+
         '<section class=lp-sec id=open aria-labelledby=open-h><h2 id=open-h>Free, open source, yours to host</h2>'
         '<dl class=lp-ways>'
         '<div><dt>Your own Claude</dt><dd>The Claude Code plugin is the harness: setup, fixes, benchmarks and the freedom test '
@@ -2051,13 +2088,13 @@ def landing_page(store, viewer, public: str) -> str:
         '<div><dt>A free service</dt><dd>The hosted server is free. The first CI run creates the project, with no sign-up '
         'and no tokens.</dd></div>'
         '<div><dt>Or host it yourself</dt><dd><code>assay server</code> runs the whole thing on your machine: one process, '
-        f'or one Docker container. <a href="{REPO_URL}#self-hosting">Self-hosting</a>.</dd></div>'
+        f'or one Docker container. <a href="{REPO_URL}/blob/main/docs/SELF_HOSTING.md">Self-hosting</a>.</dd></div>'
         f'<div><dt>Apache-2.0</dt><dd>The engine, the server, the CI action and the plugin are in <a href="{REPO_URL}">one '
         'repository</a>.</dd></div></dl></section>'
         + (f'<section class=lp-sec><div class=lp-sh><h2>Your projects</h2>'
            f'<a href="/projects">All projects</a></div><ul class=prows role=list>{"".join(cards)}</ul></section>' if cards else "")
         + '</div>')
-    return shell("Your product's health while agents ship", body, active="home")
+    return shell("End-to-end checks that read what got saved", body, active="home")
 
 
 def not_found_page(message: str = "not found") -> str:
@@ -2134,6 +2171,6 @@ def docs_page() -> str:
             '<section class=panel aria-labelledby=d-open><div class=panel-h><h2 id=d-open>Free and open source</h2></div>'
             '<p class="panel-b lede">Apache-2.0. The engine, the server, the CI action and the Claude Code plugin are in '
             f'<a href="{REPO_URL}">one repository</a>. The hosted server is free; to keep everything on your own machine, run '
-            f'<code>assay server</code> (<a href="{REPO_URL}#self-hosting">self-hosting</a>).</p></section>'
+            f'<code>assay server</code> (<a href="{REPO_URL}/blob/main/docs/SELF_HOSTING.md">self-hosting</a>).</p></section>'
             '<p class="mt-6"><a class="btn primary" href="/setup">Connect a repository</a></p></div>')
     return shell("How Assay works", body, active="docs")

@@ -752,6 +752,20 @@
     & dd { margin: var(--space-1) 0 0; color: var(--text); max-inline-size: 48ch; }
   }
   .lp-sec .lp-ways { margin-block-start: var(--space-2); }
+  /* bugs found in real apps: what the page said against what the data showed */
+  .lp-bugs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: var(--space-4); }
+  .lp-bug {
+    padding: var(--space-4); border: 1px solid var(--rule); border-radius: var(--r-panel); background: var(--paper); display: grid; gap: var(--space-2); align-content: start;
+    & .lp-bug-app { margin: 0; font-size: var(--t-sm); color: var(--ink-3); & b { color: var(--ink); font-weight: 650; } }
+    & .lp-bug-t { margin: 0; font-size: var(--t-md); font-weight: 650; color: var(--ink); line-height: 1.3; }
+    & dl { margin: var(--space-2) 0 0; display: grid; gap: var(--space-2); }
+    & dl > div { display: grid; gap: 2px; padding-block-start: var(--space-2); border-block-start: 1px solid var(--rule); }
+    & dt { font-size: var(--t-xs); color: var(--ink-3); }
+    & dd { margin: 0; font-size: var(--t-sm); color: var(--text); }
+    & dd.mono { color: var(--ink); font-weight: 600; }
+  }
+  .lp-vs { & thead th { vertical-align: bottom; } & th[scope=row] { font-weight: 600; color: var(--ink); white-space: nowrap; } & td { vertical-align: top; }
+    & td:last-child, & thead th:last-child { background: var(--accent-soft); color: var(--ink); } & td:last-child { font-weight: 550; } }
   .docs-ways { padding-block-start: var(--space-1); & dt { font-size: var(--t-base); } }
   /* the freedom test, one action: a screen that says Saved, and what Assay tells the agent */
   .xp-ex { margin: 0; display: grid; gap: var(--space-3);
