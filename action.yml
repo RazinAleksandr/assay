@@ -3,7 +3,7 @@
 # Same role as SonarCloud's scan action: run the analysis, upload it, gate the pipeline, link to the server.
 # The job signs in with GitHub's OIDC token: give it `permissions: id-token: write` and nothing else to configure.
 name: Assay quality gate
-description: Run the app's Assay journeys and screen scan, compare with the target branch, upload to the Assay server, gate the job and comment on the pull request.
+description: Run your app's end-to-end journeys, read what it saved, and gate the pull request on what the change newly broke.
 branding: {icon: check-circle, color: blue}
 inputs:
   host-url:

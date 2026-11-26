@@ -1,6 +1,6 @@
 [project]
 name = "assay"
-version = "1.2.0"
+version = "1.2.1"
 description = "Assay — the quality gate for the running app: state-grounded, AI-judged end-to-end checks for any web, mobile-web, game or AI product."
 readme = "README.md"
 license = "Apache-2.0"
